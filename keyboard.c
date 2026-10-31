@@ -369,6 +369,83 @@ keyboard_bbc_key_to_rowcol(uint8_t key, int32_t* p_row, int32_t* p_col) {
     row = 6;
     col = 9;
     break;
+  /* Master 128 keypad: columns 10 to 12. */
+  case k_keyboard_key_keypad_0:
+    row = 6;
+    col = 10;
+    break;
+  case k_keyboard_key_keypad_1:
+    row = 6;
+    col = 11;
+    break;
+  case k_keyboard_key_keypad_2:
+    row = 7;
+    col = 12;
+    break;
+  case k_keyboard_key_keypad_3:
+    row = 6;
+    col = 12;
+    break;
+  case k_keyboard_key_keypad_4:
+    row = 7;
+    col = 10;
+    break;
+  case k_keyboard_key_keypad_5:
+    row = 7;
+    col = 11;
+    break;
+  case k_keyboard_key_keypad_6:
+    row = 1;
+    col = 10;
+    break;
+  case k_keyboard_key_keypad_7:
+    row = 1;
+    col = 11;
+    break;
+  case k_keyboard_key_keypad_8:
+    row = 2;
+    col = 10;
+    break;
+  case k_keyboard_key_keypad_9:
+    row = 2;
+    col = 11;
+    break;
+  case k_keyboard_key_keypad_plus:
+    row = 3;
+    col = 10;
+    break;
+  case k_keyboard_key_keypad_minus:
+    row = 3;
+    col = 11;
+    break;
+  case k_keyboard_key_keypad_slash:
+    row = 4;
+    col = 10;
+    break;
+  case k_keyboard_key_keypad_star:
+    row = 5;
+    col = 11;
+    break;
+  case k_keyboard_key_keypad_hash:
+    row = 5;
+    col = 10;
+    break;
+  case k_keyboard_key_keypad_comma:
+    row = 5;
+    col = 12;
+    break;
+  case k_keyboard_key_keypad_delete:
+    row = 4;
+    col = 11;
+    break;
+  case k_keyboard_key_keypad_stop:
+    row = 4;
+    col = 12;
+    break;
+  case k_keyboard_key_keypad_return:
+    row = 3;
+    col = 12;
+    break;
   default:
     break;
   }

@@ -185,7 +185,6 @@ void asm_inturbo_mode_ind_END();
 void asm_instruction_Bxx_interp_accurate();
 void asm_instruction_Bxx_interp_accurate_END();
 void asm_instruction_Bxx_interp_accurate_not_taken_target();
-void asm_instruction_Bxx_interp_accurate_jb_patch();
 
 void asm_instruction_ADC_imm_interp();
 void asm_instruction_ADC_imm_interp_END();
