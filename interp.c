@@ -45,6 +45,8 @@ struct interp_struct {
 
   uint8_t callback_intf;
   int callback_do_irq;
+  /* The last interp_enter_with_countdown() returned to reload state. */
+  int did_reenter;
 
   uint64_t counter_bcd;
 };
@@ -59,9 +61,14 @@ interp_destroy(struct cpu_driver* p_cpu_driver) {
 static int
 interp_enter(struct cpu_driver* p_cpu_driver) {
   struct interp_struct* p_interp = (struct interp_struct*) p_cpu_driver;
-  int64_t countdown = timing_get_countdown(p_interp->driver.p_extra->p_timing);
 
-  (void) interp_enter_with_countdown(p_interp, countdown);
+  do {
+    int64_t countdown =
+        timing_get_countdown(p_interp->driver.p_extra->p_timing);
+    p_interp->did_reenter = 0;
+    (void) interp_enter_with_countdown(p_interp, countdown);
+  } while (p_interp->did_reenter &&
+           !(p_cpu_driver->flags & k_cpu_flag_exited));
 
   return !!(p_cpu_driver->flags & k_cpu_flag_exited);
 }
@@ -2963,10 +2970,28 @@ check_irq:
       if (cpu_driver_flags & k_cpu_flag_exited) {
         break;
       }
-      if (cpu_driver_flags & (k_cpu_flag_soft_reset | k_cpu_flag_hard_reset)) {
+      if ((cpu_driver_flags & k_cpu_flag_service) &&
+          !(cpu_driver_flags & (k_cpu_flag_soft_reset |
+                                k_cpu_flag_hard_reset)) &&
+          do_irq) {
+        /* An interrupt is about to be taken; service at the next boundary so
+         * that nothing is pending outside the 6502 state.
+         */
+        cpu_driver_flags &= ~k_cpu_flag_service;
+      }
+      if (cpu_driver_flags & (k_cpu_flag_soft_reset |
+                              k_cpu_flag_hard_reset |
+                              k_cpu_flag_service)) {
         void (*do_reset_callback)(void* p, uint32_t flags) =
             p_interp->driver.do_reset_callback;
         if (do_reset_callback != NULL) {
+          /* Make the machine state complete: registers, and the cycles of the
+           * instruction just executed.
+           */
+          flags = interp_get_flags(zf, nf, cf, of, df, intf);
+          state_6502_set_registers(p_state_6502, a, x, y, s, flags, pc);
+          countdown = timing_advance_time(p_timing, countdown);
+
           do_reset_callback(p_interp->driver.p_do_reset_callback_object,
                             cpu_driver_flags);
           state_6502_get_registers(p_state_6502, &a, &x, &y, &s, &flags, &pc);
@@ -2974,6 +2999,15 @@ check_irq:
           do_irq = 0;
 
           countdown = timing_get_countdown(p_timing);
+
+          if (p_interp->driver.flags & k_cpu_flag_reenter) {
+            /* The machine state was replaced. Leave so that the caller
+             * re-enters with everything reloaded (and the JIT recompiles).
+             */
+            p_interp->driver.flags &= ~k_cpu_flag_reenter;
+            p_interp->did_reenter = 1;
+            break;
+          }
         }
       }
     }

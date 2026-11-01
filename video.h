@@ -95,4 +95,7 @@ void video_get_crtc_state(struct video_struct* p_video,
                           int* p_is_in_vert_adjust,
                           int* p_is_in_dummy_raster);
 
+struct state_sync;
+void video_sync_state(struct video_struct* p, struct state_sync* p_sync);
+
 #endif /* BEEBJIT_VIDEO_H */

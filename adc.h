@@ -27,4 +27,7 @@ void adc_set_channel_value(struct adc_struct* p_adc,
                            uint32_t channel,
                            uint16_t value);
 
+struct state_sync;
+void adc_sync_state(struct adc_struct* p, struct state_sync* p_sync);
+
 #endif /* BEEBJIT_ADC_H */

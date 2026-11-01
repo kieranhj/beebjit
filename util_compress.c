@@ -132,3 +132,21 @@ util_uncompress(size_t* p_dst_len,
 
   return 0;
 }
+
+int
+util_compress(size_t* p_dst_len,
+              uint8_t* p_src,
+              size_t src_len,
+              uint8_t* p_dst) {
+  mz_ulong dst_len = *p_dst_len;
+  /* Level 1: these are save states taken often, speed matters more. */
+  int ret = compress2(p_dst, &dst_len, p_src, src_len, 1);
+
+  if (ret != Z_OK) {
+    return -1;
+  }
+
+  *p_dst_len = dst_len;
+
+  return 0;
+}

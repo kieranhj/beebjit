@@ -1,5 +1,7 @@
 #include "sound.h"
 
+#include "state_sync.h"
+
 #include "bbc_options.h"
 #include "log.h"
 #include "os_sound.h"
@@ -948,3 +950,41 @@ sound_set_state(struct sound_struct* p_sound,
 }
 
 #include "test-sound.c"
+
+void
+sound_sync_state(struct sound_struct* p, struct state_sync* p_sync) {
+  state_sync_tag(p_sync, STATE_TAG('S', 'N', '7', '6'));
+  STATE_SYNC(p_sync, p->is_write_enabled);
+  STATE_SYNC(p_sync, p->counter);
+  STATE_SYNC(p_sync, p->output);
+  STATE_SYNC(p_sync, p->noise_rng);
+  STATE_SYNC(p_sync, p->volume);
+  STATE_SYNC(p_sync, p->period);
+  STATE_SYNC(p_sync, p->noise_frequency);
+  STATE_SYNC(p_sync, p->noise_type);
+  STATE_SYNC(p_sync, p->latched_address);
+  STATE_SYNC(p_sync, p->curr_bus_value);
+  STATE_SYNC(p_sync, p->pending_write_enable);
+  STATE_SYNC(p_sync, p->write_cycle_position);
+  STATE_SYNC(p_sync, p->write_gate_open_bytes_accepted);
+  STATE_SYNC(p_sync, p->accumulated_value);
+  STATE_SYNC(p_sync, p->accumulated_count);
+  STATE_SYNC(p_sync, p->iir_first_pass_input_history);
+  STATE_SYNC(p_sync, p->iir_first_pass_output_history);
+  STATE_SYNC(p_sync, p->iir_second_pass_input_history);
+  STATE_SYNC(p_sync, p->iir_second_pass_output_history);
+  STATE_SYNC(p_sync, p->prev_system_ticks);
+  STATE_SYNC(p_sync, p->sn_frames_filled);
+  STATE_SYNC(p_sync, p->current_sub_period);
+  STATE_SYNC(p_sync, p->driver_buffer_index);
+  /* Samples generated but not yet handed to the driver. The buffers have a
+   * fixed size for a given configuration, so the state does too. */
+  if (state_sync_is_load(p_sync) &&
+      ((p->driver_buffer_index > p->driver_buffer_size) ||
+       (p->sn_frames_filled > p->sn_frames_per_driver_buffer_size))) {
+    p_sync->is_error = 1;
+    return;
+  }
+  state_sync_bytes(p_sync, p->p_driver_frames, (p->driver_buffer_size * sizeof(int16_t)));
+  state_sync_bytes(p_sync, p->p_sn_frames, (p->sn_frames_per_driver_buffer_size * sizeof(int16_t)));
+}

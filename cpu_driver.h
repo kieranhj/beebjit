@@ -22,6 +22,16 @@ enum {
   k_cpu_flag_soft_reset = 2,
   k_cpu_flag_hard_reset = 4,
   k_cpu_flag_replay = 8,
+  /* Call the reset callback at the next instruction boundary where no
+   * interrupt is about to be taken, with the registers and timing synced into
+   * their structs. Used to park the machine at a point where its state is
+   * complete, e.g. for save states.
+   */
+  k_cpu_flag_service = 16,
+  /* Set by the reset callback when it replaced the machine state: the CPU
+   * driver must reload everything it caches.
+   */
+  k_cpu_flag_reenter = 32,
 };
 
 struct cpu_driver_funcs {

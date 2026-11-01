@@ -30,4 +30,7 @@ void wd_fdc_break_reset(struct wd_fdc_struct* p_fdc);
 uint8_t wd_fdc_read(struct wd_fdc_struct* p_fdc, uint16_t addr);
 void wd_fdc_write(struct wd_fdc_struct* p_fdc, uint16_t addr, uint8_t val);
 
+struct state_sync;
+void wd_fdc_sync_state(struct wd_fdc_struct* p, struct state_sync* p_sync);
+
 #endif /* BEEBJIT_WD_FDC_H */

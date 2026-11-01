@@ -33,4 +33,7 @@ void mc6850_receive_bit(struct mc6850_struct* p_serial, int bit);
 int mc6850_receive(struct mc6850_struct* p_serial, uint8_t byte);
 uint8_t mc6850_transmit(struct mc6850_struct* p_serial);
 
+struct state_sync;
+void mc6850_sync_state(struct mc6850_struct* p, struct state_sync* p_sync);
+
 #endif /* BEEBJIT_MC6850_H */

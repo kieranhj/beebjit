@@ -1,5 +1,7 @@
 #include "serial_ula.h"
 
+#include "state_sync.h"
+
 #include "bbc_options.h"
 #include "log.h"
 #include "mc6850.h"
@@ -295,4 +297,13 @@ serial_ula_tick(struct serial_ula_struct* p_serial_ula) {
     /* This may block; we rely on the host end to be faster than our BBC! */
     (void) os_terminal_handle_write_byte(handle_output, val);
   }
+}
+
+void
+serial_ula_sync_state(struct serial_ula_struct* p, struct state_sync* p_sync) {
+  state_sync_tag(p_sync, STATE_TAG('S', 'U', 'L', 'A'));
+  STATE_SYNC(p_sync, p->is_rs423_selected);
+  STATE_SYNC(p_sync, p->is_motor_on);
+  STATE_SYNC(p_sync, p->tape_carrier_count);
+  STATE_SYNC(p_sync, p->is_tape_DCD);
 }

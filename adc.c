@@ -1,5 +1,7 @@
 #include "adc.h"
 
+#include "state_sync.h"
+
 #include "log.h"
 #include "timing.h"
 #include "util.h"
@@ -259,4 +261,10 @@ adc_set_channel_value(struct adc_struct* p_adc,
   p_adc->state.channel_value[channel] = value;
 
   adc_recalculate_read(p_adc);
+}
+
+void
+adc_sync_state(struct adc_struct* p, struct state_sync* p_sync) {
+  state_sync_tag(p_sync, STATE_TAG('A', 'D', 'C', '_'));
+  STATE_SYNC(p_sync, p->state);
 }

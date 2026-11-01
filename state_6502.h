@@ -50,6 +50,10 @@ struct state_6502 {
   } state;
 };
 
+struct state_sync;
+void state_6502_sync_state(struct state_6502* p_state_6502,
+                           struct state_sync* p_sync);
+
 struct state_6502* state_6502_create(struct timing_struct* p_timing,
                                      uint8_t* p_mem_read);
 void state_6502_destroy(struct state_6502* p_state_6502);

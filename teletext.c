@@ -1,5 +1,7 @@
 #include "teletext.h"
 
+#include "state_sync.h"
+
 /* Needed before teletext_glyphs.h */
 #include <stdint.h>
 
@@ -681,4 +683,74 @@ teletext_VSYNC_changed(struct teletext_struct* p_teletext, int value) {
    * output while vsync is active!
    */
   teletext_new_frame_started(p_teletext);
+}
+
+/* The glyph pointers point into the generated tables; save them as offsets. */
+static int32_t
+teletext_glyph_ptr_to_index(uint8_t* p_glyph) {
+  if (p_glyph == NULL) {
+    return -1;
+  }
+  if ((p_glyph >= s_teletext_generated_glyphs) &&
+      (p_glyph < (s_teletext_generated_glyphs +
+                  sizeof(s_teletext_generated_glyphs)))) {
+    return (int32_t) (p_glyph - s_teletext_generated_glyphs);
+  }
+  if ((p_glyph >= s_teletext_generated_gfx) &&
+      (p_glyph < (s_teletext_generated_gfx + sizeof(s_teletext_generated_gfx)))) {
+    return (0x100000 + (int32_t) (p_glyph - s_teletext_generated_gfx));
+  }
+  if ((p_glyph >= s_teletext_generated_sep_gfx) &&
+      (p_glyph < (s_teletext_generated_sep_gfx +
+                  sizeof(s_teletext_generated_sep_gfx)))) {
+    return (0x200000 + (int32_t) (p_glyph - s_teletext_generated_sep_gfx));
+  }
+  return -1;
+}
+
+static uint8_t*
+teletext_glyph_index_to_ptr(int32_t index) {
+  int32_t offset = (index & 0xFFFFF);
+  if ((index < 0) || (offset >= (int32_t) sizeof(s_teletext_generated_glyphs))) {
+    return &s_teletext_generated_glyphs[0];
+  }
+  switch (index >> 20) {
+  case 1: return &s_teletext_generated_gfx[offset];
+  case 2: return &s_teletext_generated_sep_gfx[offset];
+  default: return &s_teletext_generated_glyphs[offset];
+  }
+}
+
+void
+teletext_sync_state(struct teletext_struct* p, struct state_sync* p_sync) {
+  int32_t held_index = teletext_glyph_ptr_to_index(p->p_held_character);
+  int32_t render_index = teletext_glyph_ptr_to_index(p->p_render_character);
+
+  state_sync_tag(p_sync, STATE_TAG('T', 'T', 'X', 'T'));
+  STATE_SYNC(p_sync, p->data_pipeline);
+  STATE_SYNC(p_sync, p->dispen_pipeline);
+  STATE_SYNC(p_sync, p->flash_count);
+  STATE_SYNC(p_sync, p->flash_visible_this_frame);
+  STATE_SYNC(p_sync, p->scanline);
+  STATE_SYNC(p_sync, p->is_graphics_active);
+  STATE_SYNC(p_sync, p->is_separated_active);
+  STATE_SYNC(p_sync, p->is_concealed);
+  STATE_SYNC(p_sync, p->double_active);
+  STATE_SYNC(p_sync, p->flash_active);
+  STATE_SYNC(p_sync, p->had_double_active_this_scanline);
+  STATE_SYNC(p_sync, p->second_character_row_of_double);
+  STATE_SYNC(p_sync, p->fg_color);
+  STATE_SYNC(p_sync, p->bg_color);
+  STATE_SYNC(p_sync, p->is_hold_graphics);
+  STATE_SYNC(p_sync, p->crtc_ra0);
+  STATE_SYNC(p_sync, p->is_isv);
+  STATE_SYNC(p_sync, p->curr_dispen);
+  STATE_SYNC(p_sync, p->render_fg_color);
+  STATE_SYNC(p_sync, held_index);
+  STATE_SYNC(p_sync, render_index);
+  if (state_sync_is_load(p_sync)) {
+    teletext_set_active_characters(p);
+    p->p_held_character = teletext_glyph_index_to_ptr(held_index);
+    p->p_render_character = teletext_glyph_index_to_ptr(render_index);
+  }
 }

@@ -23,4 +23,7 @@ void cmos_update_external_inputs(struct cmos_struct* p_cmos,
 /* The chip's 64 bytes, for persisting configuration. */
 uint8_t* cmos_get_ram(struct cmos_struct* p_cmos);
 
+struct state_sync;
+void cmos_sync_state(struct cmos_struct* p, struct state_sync* p_sync);
+
 #endif /* BEEBJIT_CMOS_H */

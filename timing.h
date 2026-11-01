@@ -50,6 +50,10 @@ int64_t timing_advance_time_delta(struct timing_struct* p_timing,
                                   uint64_t delta);
 
 /* For compatability with older replays. */
+struct state_sync;
+void timing_sync_state(struct timing_struct* p_timing,
+                       struct state_sync* p_sync);
+
 void timing_set_odd_even_mixin(struct timing_struct* p_timing, uint64_t mixin);
 
 #endif /* BEEBJIT_TIMING_H */

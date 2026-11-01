@@ -1,5 +1,7 @@
 #include "timing.h"
 
+#include "state_sync.h"
+
 #include "log.h"
 #include "util.h"
 
@@ -547,6 +549,93 @@ timing_advance_time_delta(struct timing_struct* p_timing, uint64_t delta) {
   uint64_t countdown = p_timing->countdown;
   countdown -= delta;
   return timing_advance_time(p_timing, countdown);
+}
+
+void
+timing_sync_state(struct timing_struct* p_timing, struct state_sync* p_sync) {
+  /* Timer ids follow registration order, which is fixed for a given machine
+   * configuration, so ids match between the saving and loading machines.
+   * The expiry list order matters when timers expire on the same tick, so it
+   * is saved too.
+   */
+  uint32_t i;
+  uint32_t num_timers = p_timing->num_timers;
+  uint32_t num_expiring = 0;
+  uint8_t expiry_order[k_timing_num_timers];
+  struct timer_struct* p_timer;
+
+  state_sync_tag(p_sync, STATE_TAG('T', 'I', 'M', 'E'));
+  STATE_SYNC(p_sync, p_timing->total_timer_ticks);
+  STATE_SYNC(p_sync, p_timing->countdown);
+  STATE_SYNC(p_sync, p_timing->odd_even_tracker);
+  STATE_SYNC(p_sync, p_timing->odd_even_mixin);
+  STATE_SYNC(p_sync, p_timing->next_timer_expiry);
+  STATE_SYNC(p_sync, num_timers);
+  if (num_timers != p_timing->num_timers) {
+    p_sync->is_error = 1;
+    return;
+  }
+  for (i = 0; i < num_timers; ++i) {
+    p_timer = &p_timing->timers[i];
+    STATE_SYNC(p_sync, p_timer->value);
+    STATE_SYNC(p_sync, p_timer->ticking);
+    STATE_SYNC(p_sync, p_timer->firing);
+  }
+
+  (void) memset(expiry_order, 0, sizeof(expiry_order));
+  if (!state_sync_is_load(p_sync)) {
+    for (p_timer = p_timing->p_expiry_head;
+         p_timer != NULL;
+         p_timer = p_timer->p_expiry_next) {
+      expiry_order[num_expiring++] = (uint8_t) (p_timer - &p_timing->timers[0]);
+    }
+  }
+  STATE_SYNC(p_sync, num_expiring);
+  STATE_SYNC(p_sync, expiry_order);
+  if (!state_sync_is_load(p_sync) || p_sync->is_error) {
+    return;
+  }
+
+  /* Rebuild the ticking and expiry lists. */
+  if (num_expiring > num_timers) {
+    p_sync->is_error = 1;
+    return;
+  }
+  p_timing->p_ticking_head = NULL;
+  p_timing->p_expiry_head = NULL;
+  for (i = 0; i < k_timing_num_timers; ++i) {
+    p_timer = &p_timing->timers[i];
+    p_timer->p_expiry_prev = NULL;
+    p_timer->p_expiry_next = NULL;
+    p_timer->p_ticking_prev = NULL;
+    p_timer->p_ticking_next = NULL;
+  }
+  for (i = 0; i < num_timers; ++i) {
+    p_timer = &p_timing->timers[i];
+    if (p_timer->ticking) {
+      timing_insert_ticking_timer(p_timing, p_timer);
+    }
+  }
+  {
+    struct timer_struct* p_prev = NULL;
+    for (i = 0; i < num_expiring; ++i) {
+      uint32_t id = expiry_order[i];
+      if ((id >= num_timers) ||
+          !p_timing->timers[id].ticking ||
+          !p_timing->timers[id].firing) {
+        p_sync->is_error = 1;
+        return;
+      }
+      p_timer = &p_timing->timers[id];
+      p_timer->p_expiry_prev = p_prev;
+      if (p_prev == NULL) {
+        p_timing->p_expiry_head = p_timer;
+      } else {
+        p_prev->p_expiry_next = p_timer;
+      }
+      p_prev = p_timer;
+    }
+  }
 }
 
 void

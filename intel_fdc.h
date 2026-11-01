@@ -31,4 +31,7 @@ void intel_fdc_write(struct intel_fdc_struct* p_fdc,
 
 void intel_fdc_testing_fire_nmi(struct intel_fdc_struct* p_fdc);
 
+struct state_sync;
+void intel_fdc_sync_state(struct intel_fdc_struct* p, struct state_sync* p_sync);
+
 #endif /* BEEBJIT_INTEL_FDC_H */

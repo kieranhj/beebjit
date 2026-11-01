@@ -1,5 +1,7 @@
 #include "video.h"
 
+#include "state_sync.h"
+
 #include "bbc_options.h"
 #include "log.h"
 #include "render.h"
@@ -2413,3 +2415,88 @@ video_get_crtc_state(struct video_struct* p_video,
 }
 
 #include "test-video.c"
+
+void
+video_sync_state(struct video_struct* p, struct state_sync* p_sync) {
+  state_sync_tag(p_sync, STATE_TAG('V', 'I', 'D', 'E'));
+  STATE_SYNC(p_sync, p->is_framing_changed_for_render);
+  STATE_SYNC(p_sync, p->is_wall_time_vsync_hit);
+  STATE_SYNC(p_sync, p->last_wall_time_vsync_hit_cycles);
+  STATE_SYNC(p_sync, p->is_rendering_active);
+  STATE_SYNC(p_sync, p->has_paint_timer_triggered);
+  STATE_SYNC(p_sync, p->frame_skip_counter);
+  STATE_SYNC(p_sync, p->wall_time);
+  STATE_SYNC(p_sync, p->vsync_next_time);
+  STATE_SYNC(p_sync, p->prev_system_ticks);
+  STATE_SYNC(p_sync, p->timer_fire_mode);
+  STATE_SYNC(p_sync, p->num_vsyncs);
+  STATE_SYNC(p_sync, p->num_crtc_advances);
+  STATE_SYNC(p_sync, p->paint_start_cycles);
+  STATE_SYNC(p_sync, p->paint_cycles);
+  STATE_SYNC(p_sync, p->via_ca1_irq_level);
+  STATE_SYNC(p_sync, p->ula_palette);
+  STATE_SYNC(p_sync, p->video_ula_control);
+  STATE_SYNC(p_sync, p->is_ula_clock_fast);
+  STATE_SYNC(p_sync, p->screen_wrap_add);
+  STATE_SYNC(p_sync, p->clock_tick_shift);
+  STATE_SYNC(p_sync, p->nula_pending_palette);
+  STATE_SYNC(p_sync, p->crtc_registers);
+  STATE_SYNC(p_sync, p->crtc_address_register);
+  STATE_SYNC(p_sync, p->is_interlace);
+  STATE_SYNC(p_sync, p->is_interlace_sync_and_video);
+  STATE_SYNC(p_sync, p->scanline_stride);
+  STATE_SYNC(p_sync, p->scanline_mask);
+  STATE_SYNC(p_sync, p->hsync_pulse_width);
+  STATE_SYNC(p_sync, p->vsync_pulse_width);
+  STATE_SYNC(p_sync, p->half_r0);
+  STATE_SYNC(p_sync, p->cursor_disabled);
+  STATE_SYNC(p_sync, p->cursor_flashing);
+  STATE_SYNC(p_sync, p->cursor_flash_mask);
+  STATE_SYNC(p_sync, p->cursor_start_line);
+  STATE_SYNC(p_sync, p->has_sane_framing_parameters);
+  STATE_SYNC(p_sync, p->frame_crtc_ticks);
+  STATE_SYNC(p_sync, p->skew_dispen_index);
+  STATE_SYNC(p_sync, p->cursor_skew);
+  STATE_SYNC(p_sync, p->crtc_frames);
+  STATE_SYNC(p_sync, p->is_odd_frame);
+  STATE_SYNC(p_sync, p->horiz_counter);
+  STATE_SYNC(p_sync, p->scanline_counter);
+  STATE_SYNC(p_sync, p->vert_counter);
+  STATE_SYNC(p_sync, p->vert_adjust_counter);
+  STATE_SYNC(p_sync, p->vsync_scanline_counter);
+  STATE_SYNC(p_sync, p->hsync_tick_counter);
+  STATE_SYNC(p_sync, p->address_counter);
+  STATE_SYNC(p_sync, p->address_counter_saved);
+  STATE_SYNC(p_sync, p->is_vert_adjust_pending);
+  STATE_SYNC(p_sync, p->is_in_vert_adjust);
+  STATE_SYNC(p_sync, p->in_vsync);
+  STATE_SYNC(p_sync, p->is_even_vsync);
+  STATE_SYNC(p_sync, p->is_odd_vsync);
+  STATE_SYNC(p_sync, p->in_hsync);
+  STATE_SYNC(p_sync, p->in_dummy_raster);
+  STATE_SYNC(p_sync, p->had_odd_vsync_this_row);
+  STATE_SYNC(p_sync, p->had_even_vsync_this_row);
+  STATE_SYNC(p_sync, p->display_enable_bits);
+  STATE_SYNC(p_sync, p->has_hit_cursor_line_start);
+  STATE_SYNC(p_sync, p->has_hit_cursor_line_end);
+  STATE_SYNC(p_sync, p->is_end_of_main_latched);
+  STATE_SYNC(p_sync, p->is_end_of_vert_adjust_latched);
+  STATE_SYNC(p_sync, p->is_end_of_frame_latched);
+  STATE_SYNC(p_sync, p->start_of_line_state_checks);
+  STATE_SYNC(p_sync, p->is_first_frame_scanline);
+  STATE_SYNC(p_sync, p->last_vsync_raise_ticks);
+  STATE_SYNC(p_sync, p->last_vsync_lower_ticks);
+  STATE_SYNC(p_sync, p->cursor_skew_counter);
+  STATE_SYNC(p_sync, p->dispen_shifts);
+  STATE_SYNC(p_sync, p->data_byte);
+  STATE_SYNC(p_sync, p->romsel);
+  STATE_SYNC(p_sync, p->acccon);
+  if (state_sync_is_load(p_sync)) {
+    /* Which RAM the display reads follows ACCCON; see video_mem_mode_updated(). */
+    if ((p->acccon & 0x01) ^ ((p->acccon & 0x04) >> 2)) {
+      p->p_mem_base = p->p_shadow_mem;
+    } else {
+      p->p_mem_base = p->p_bbc_mem;
+    }
+  }
+}

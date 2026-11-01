@@ -22,6 +22,7 @@
 #include "serial_ula.h"
 #include "sound.h"
 #include "state_6502.h"
+#include "state_sync.h"
 #include "tape.h"
 #include "teletext.h"
 #include "timing.h"
@@ -231,6 +232,13 @@ struct bbc_struct {
   int log_speed;
   int log_timestamp;
   int log_hw_reg_hits;
+
+  /* Parking at a vsync on an instruction boundary, for save states. */
+  int is_state_park;
+  int has_pending_vsync;
+  struct bbc_message pending_vsync;
+  int is_state_loaded;
+  uint32_t log_count_park_delay;
 };
 
 static int
@@ -1742,6 +1750,17 @@ bbc_framebuffer_ready_callback(void* p,
   message.data[2] = framing_changed;
   message.data[3] = timing_get_total_timer_ticks(p_bbc->p_timing);
   message.data[4] = do_wait_for_paint;
+  if (p_bbc->is_state_park && do_wait_for_paint) {
+    /* We are inside a timer callback, with CPU registers and cycle counts not
+     * yet written back. Park at the next instruction boundary instead, where
+     * the machine state is complete and can be saved or replaced.
+     */
+    struct cpu_driver* p_cpu_driver = p_bbc->p_cpu_driver;
+    p_bbc->pending_vsync = message;
+    p_bbc->has_pending_vsync = 1;
+    p_cpu_driver->p_funcs->apply_flags(p_cpu_driver, k_cpu_flag_service, 0);
+    return;
+  }
   bbc_cpu_send_message(p_bbc, &message);
   if (do_wait_for_paint) {
     bbc_cpu_receive_message(p_bbc, &message);
@@ -1793,6 +1812,35 @@ bbc_do_reset_callback(void* p, uint32_t flags) {
   struct bbc_struct* p_bbc = (struct bbc_struct*) p;
   struct cpu_driver* p_cpu_driver = p_bbc->p_cpu_driver;
 
+  if (flags & k_cpu_flag_service) {
+    p_cpu_driver->p_funcs->apply_flags(p_cpu_driver, 0, k_cpu_flag_service);
+    if (p_bbc->has_pending_vsync) {
+      struct bbc_message message;
+      uint64_t delay = (timing_get_total_timer_ticks(p_bbc->p_timing) -
+                        p_bbc->pending_vsync.data[3]);
+      if (delay > 200) {
+        log_do_log_max_count(&p_bbc->log_count_park_delay,
+                             k_log_misc,
+                             k_log_info,
+                             "vsync park delayed %"PRIu64" ticks",
+                             delay);
+      }
+      p_bbc->has_pending_vsync = 0;
+      bbc_cpu_send_message(p_bbc, &p_bbc->pending_vsync);
+      /* Parked: the client may save or replace the machine state now. */
+      bbc_cpu_receive_message(p_bbc, &message);
+      assert(message.data[0] == k_message_render_done);
+    }
+    if (p_bbc->is_state_loaded) {
+      /* Compiled code reflects the old memory; the CPU driver must reload. */
+      p_bbc->is_state_loaded = 0;
+      p_cpu_driver->p_funcs->memory_range_invalidate(p_cpu_driver,
+                                                     0,
+                                                     k_6502_addr_space_size);
+      p_cpu_driver->p_funcs->apply_flags(p_cpu_driver, k_cpu_flag_reenter, 0);
+    }
+  }
+
   if (flags & k_cpu_flag_soft_reset) {
     bbc_break_reset(p_bbc);
   }
@@ -1803,10 +1851,14 @@ bbc_do_reset_callback(void* p, uint32_t flags) {
     keyboard_rewind(p_bbc->p_keyboard, p_bbc->rewind_to_cycles);
   }
 
+  /* Clear only what was handled: a reset requested by another thread while
+   * parked above must still happen.
+   */
   p_cpu_driver->p_funcs->apply_flags(
       p_cpu_driver,
       0,
-      (k_cpu_flag_soft_reset | k_cpu_flag_hard_reset | k_cpu_flag_replay));
+      (flags &
+       (k_cpu_flag_soft_reset | k_cpu_flag_hard_reset | k_cpu_flag_replay)));
 }
 
 static void
@@ -3312,6 +3364,46 @@ bbc_add_disc(struct bbc_struct* p_bbc,
   disc_drive_add_disc(p_drive, p_disc);
 }
 
+struct disc_struct*
+bbc_open_disc(struct bbc_struct* p_bbc,
+              const char* p_filename,
+              int is_writeable,
+              int is_mutable,
+              int is_sides_swapped) {
+  struct disc_struct* p_disc = disc_create(p_filename,
+                                           is_writeable,
+                                           is_mutable,
+                                           0,
+                                           0,
+                                           0,
+                                           &p_bbc->options);
+  if (p_disc == NULL) {
+    util_bail("disc_create failed");
+  }
+  disc_set_sides_swapped(p_disc, is_sides_swapped);
+  disc_load(p_disc);
+  return p_disc;
+}
+
+void
+bbc_close_disc(struct disc_struct* p_disc) {
+  if (p_disc == NULL) {
+    return;
+  }
+  disc_flush_writes(p_disc);
+  disc_destroy(p_disc);
+}
+
+struct disc_struct*
+bbc_exchange_disc(struct bbc_struct* p_bbc,
+                  int drive,
+                  struct disc_struct* p_disc) {
+  struct disc_drive_struct* p_drive;
+  assert((drive >= 0) && (drive <= 1));
+  p_drive = (drive == 0) ? p_bbc->p_drive_0 : p_bbc->p_drive_1;
+  return disc_drive_exchange_disc(p_drive, p_disc);
+}
+
 void
 bbc_replace_disc(struct bbc_struct* p_bbc,
                  int drive,
@@ -3326,18 +3418,11 @@ bbc_replace_disc(struct bbc_struct* p_bbc,
   p_drive = (drive == 0) ? p_bbc->p_drive_0 : p_bbc->p_drive_1;
 
   if (p_filename != NULL) {
-    p_disc = disc_create(p_filename,
-                         is_writeable,
-                         is_mutable,
-                         0,
-                         0,
-                         0,
-                         &p_bbc->options);
-    if (p_disc == NULL) {
-      util_bail("disc_create failed");
-    }
-    disc_set_sides_swapped(p_disc, is_sides_swapped);
-    disc_load(p_disc);
+    p_disc = bbc_open_disc(p_bbc,
+                           p_filename,
+                           is_writeable,
+                           is_mutable,
+                           is_sides_swapped);
   }
   disc_drive_replace_disc(p_drive, p_disc);
 }
@@ -3404,9 +3489,234 @@ bbc_set_autoboot(struct bbc_struct* p_bbc, int autoboot_flag) {
   p_bbc->autoboot_flag = autoboot_flag;
 }
 
+int
+bbc_is_autobooting(struct bbc_struct* p_bbc) {
+  return ((p_bbc->timer_id_autoboot != -1) &&
+          timing_timer_is_running(p_bbc->p_timing,
+                                  (uint32_t) p_bbc->timer_id_autoboot));
+}
+
 void
 bbc_set_commands(struct bbc_struct* p_bbc, const char* p_commands) {
   debug_set_commands(p_bbc->p_debug, p_commands);
+}
+
+/* ---- save states ---------------------------------------------------------
+ * The machine is saved while parked (bbc_enable_state_park()), when every
+ * module's state is in its struct. Discs are saved as the tracks written
+ * since the image was loaded; the caller re-inserts the same images, freshly
+ * loaded, before bbc_state_load().
+ */
+enum {
+  k_bbc_state_disc_budget = (448 * 1024),
+};
+
+void
+bbc_enable_state_park(struct bbc_struct* p_bbc) {
+  p_bbc->is_state_park = 1;
+}
+
+#define BBC_SYNC_CHECK(p_sync, value)                                         \
+  do {                                                                        \
+    int32_t check_val = (int32_t) (value);                                    \
+    STATE_SYNC(p_sync, check_val);                                            \
+    if (state_sync_is_load(p_sync) && (check_val != (int32_t) (value))) {     \
+      (p_sync)->is_error = 1;                                                 \
+    }                                                                         \
+  } while (0)
+
+static void
+bbc_sync_state(struct bbc_struct* p_bbc, struct state_sync* p_sync) {
+  uint32_t i;
+
+  state_sync_tag(p_sync, STATE_TAG('B', 'B', 'C', '1'));
+  /* Configuration: must match. */
+  BBC_SYNC_CHECK(p_sync, p_bbc->is_master);
+  BBC_SYNC_CHECK(p_sync, p_bbc->has_sideways_ram);
+  for (i = 0; i < k_bbc_num_roms; ++i) {
+    BBC_SYNC_CHECK(p_sync, p_bbc->is_sideways_ram_bank[i]);
+  }
+  BBC_SYNC_CHECK(p_sync, p_bbc->is_extended_rom_addressing);
+  BBC_SYNC_CHECK(p_sync, p_bbc->is_wd_fdc);
+  BBC_SYNC_CHECK(p_sync, p_bbc->is_wd_1772);
+  if (p_sync->is_error) {
+    return;
+  }
+
+  state_6502_sync_state(p_bbc->p_state_6502, p_sync);
+  timing_sync_state(p_bbc->p_timing, p_sync);
+
+  state_sync_tag(p_sync, STATE_TAG('M', 'E', 'M', '_'));
+  STATE_SYNC(p_sync, p_bbc->romsel);
+  STATE_SYNC(p_sync, p_bbc->acccon);
+  STATE_SYNC(p_sync, p_bbc->is_acccon_usr_mos_different);
+  STATE_SYNC(p_sync, p_bbc->is_romsel_invalidated);
+  STATE_SYNC(p_sync, p_bbc->read_callback_from);
+  STATE_SYNC(p_sync, p_bbc->write_callback_from);
+  STATE_SYNC(p_sync, p_bbc->IC32);
+  /* The 6502's view as paged now, then the stores behind each paged region.
+   * The store copy of a paged-in region is stale but harmless.
+   */
+  state_sync_bytes(p_sync, p_bbc->p_mem_raw, k_6502_addr_space_size);
+  for (i = 0; i < k_bbc_num_roms; ++i) {
+    if (p_bbc->is_sideways_ram_bank[i]) {
+      state_sync_bytes(p_sync,
+                       (p_bbc->p_mem_sideways + (i * k_bbc_rom_size)),
+                       k_bbc_rom_size);
+    }
+  }
+  if (p_bbc->is_master) {
+    state_sync_bytes(p_sync, p_bbc->p_mem_lynne, k_bbc_lynne_size);
+    state_sync_bytes(p_sync, p_bbc->p_mem_hazel, k_bbc_hazel_size);
+    state_sync_bytes(p_sync, p_bbc->p_mem_andy, k_bbc_andy_size);
+  }
+
+  via_sync_state(p_bbc->p_system_via, p_sync);
+  via_sync_state(p_bbc->p_user_via, p_sync);
+  keyboard_sync_state(p_bbc->p_keyboard, p_sync);
+  sound_sync_state(p_bbc->p_sound, p_sync);
+  video_sync_state(p_bbc->p_video, p_sync);
+  render_sync_state(p_bbc->p_render, p_sync);
+  teletext_sync_state(p_bbc->p_teletext, p_sync);
+  if (p_bbc->p_cmos != NULL) {
+    cmos_sync_state(p_bbc->p_cmos, p_sync);
+  }
+  adc_sync_state(p_bbc->p_adc, p_sync);
+  mc6850_sync_state(p_bbc->p_serial, p_sync);
+  serial_ula_sync_state(p_bbc->p_serial_ula, p_sync);
+  if (p_bbc->p_intel_fdc != NULL) {
+    intel_fdc_sync_state(p_bbc->p_intel_fdc, p_sync);
+  }
+  if (p_bbc->p_wd_fdc != NULL) {
+    wd_fdc_sync_state(p_bbc->p_wd_fdc, p_sync);
+  }
+  disc_drive_sync_state(p_bbc->p_drive_0, p_sync);
+  disc_drive_sync_state(p_bbc->p_drive_1, p_sync);
+  state_sync_tag(p_sync, STATE_TAG('E', 'N', 'D', '_'));
+}
+
+static size_t
+bbc_state_base_size(struct bbc_struct* p_bbc) {
+  struct state_sync sync;
+  state_sync_init(&sync, NULL, 0, 0);
+  bbc_sync_state(p_bbc, &sync);
+  return sync.pos;
+}
+
+size_t
+bbc_state_size(struct bbc_struct* p_bbc) {
+  /* Fixed for a given configuration: the machine, then for each drive a
+   * length and its written tracks, within a fixed budget.
+   */
+  return (bbc_state_base_size(p_bbc) + 8 + k_bbc_state_disc_budget);
+}
+
+int
+bbc_state_save(struct bbc_struct* p_bbc, uint8_t* p_buf, size_t size) {
+  struct state_sync sync;
+  size_t pos;
+  size_t end = bbc_state_size(p_bbc);
+  uint32_t i;
+
+  if (size < end) {
+    return 0;
+  }
+  state_sync_init(&sync, p_buf, end, 0);
+  bbc_sync_state(p_bbc, &sync);
+  if (sync.is_error) {
+    return 0;
+  }
+  pos = sync.pos;
+  for (i = 0; i < 2; ++i) {
+    struct disc_drive_struct* p_drive =
+        ((i == 0) ? p_bbc->p_drive_0 : p_bbc->p_drive_1);
+    struct disc_struct* p_disc = disc_drive_get_disc(p_drive);
+    uint32_t len = 0;
+    if (p_disc != NULL) {
+      /* Leave room for the second drive's length word. */
+      size_t avail = (end - pos - 4 - ((i == 0) ? 4 : 0));
+      size_t used = disc_save_written_tracks(p_disc, (p_buf + pos + 4), avail);
+      if (used == 0) {
+        log_do_log(k_log_disc,
+                   k_log_warning,
+                   "save state: written disc tracks exceed the state's budget");
+        return 0;
+      }
+      len = (uint32_t) used;
+    }
+    (void) memcpy((p_buf + pos), &len, 4);
+    pos += (4 + len);
+  }
+  (void) memset((p_buf + pos), 0, (end - pos));
+
+  return 1;
+}
+
+int
+bbc_state_load(struct bbc_struct* p_bbc, const uint8_t* p_buf, size_t size) {
+  /* Take a backup first and put it back on any error, so a bad state leaves
+   * the machine as it was.
+   */
+  struct state_sync sync;
+  size_t base_size = bbc_state_base_size(p_bbc);
+  uint8_t* p_backup;
+  size_t pos;
+  uint32_t i;
+  int ok;
+
+  if ((p_buf == NULL) || (size < bbc_state_size(p_bbc))) {
+    return 0;
+  }
+  p_backup = util_malloc(base_size);
+  state_sync_init(&sync, p_backup, base_size, 0);
+  bbc_sync_state(p_bbc, &sync);
+  if (sync.is_error) {
+    util_free(p_backup);
+    return 0;
+  }
+
+  state_sync_init(&sync, (void*) p_buf, size, 1);
+  bbc_sync_state(p_bbc, &sync);
+  ok = !sync.is_error;
+  pos = sync.pos;
+  for (i = 0; ok && (i < 2); ++i) {
+    struct disc_drive_struct* p_drive =
+        ((i == 0) ? p_bbc->p_drive_0 : p_bbc->p_drive_1);
+    struct disc_struct* p_disc = disc_drive_get_disc(p_drive);
+    uint32_t len;
+    if ((pos + 4) > size) {
+      ok = 0;
+      break;
+    }
+    (void) memcpy(&len, (p_buf + pos), 4);
+    pos += 4;
+    if (len > (size - pos)) {
+      ok = 0;
+      break;
+    }
+    if ((len > 0) != (p_disc != NULL)) {
+      /* The caller should have inserted the disc the state was saved with. */
+      ok = 0;
+      break;
+    }
+    if ((len > 0) &&
+        (disc_load_written_tracks(p_disc, (p_buf + pos), len) != len)) {
+      ok = 0;
+      break;
+    }
+    pos += len;
+  }
+
+  if (!ok) {
+    state_sync_init(&sync, p_backup, base_size, 1);
+    bbc_sync_state(p_bbc, &sync);
+    assert(!sync.is_error);
+  }
+  util_free(p_backup);
+  if (ok) {
+    p_bbc->is_state_loaded = 1;
+  }
+  return ok;
 }
 
 #include "test-bbc.c"

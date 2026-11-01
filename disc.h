@@ -115,4 +115,12 @@ void disc_build_track_from_pulses(struct disc_struct* p_disc,
                                   float* p_pulse_deltas,
                                   uint32_t num_pulses);
 
+/* Save state support; see disc.c. */
+size_t disc_save_written_tracks(struct disc_struct* p_disc,
+                                uint8_t* p_buf,
+                                size_t max_size);
+size_t disc_load_written_tracks(struct disc_struct* p_disc,
+                                const uint8_t* p_buf,
+                                size_t size);
+
 #endif /* BEEBJIT_DISC_H */

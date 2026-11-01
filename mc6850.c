@@ -1,5 +1,7 @@
 #include "mc6850.h"
 
+#include "state_sync.h"
+
 #include "bbc_options.h"
 #include "log.h"
 #include "state_6502.h"
@@ -457,4 +459,23 @@ mc6850_write(struct mc6850_struct* p_serial, uint8_t reg, uint8_t val) {
   }
 
   mc6850_update_irq_and_status_read(p_serial);
+}
+
+void
+mc6850_sync_state(struct mc6850_struct* p, struct state_sync* p_sync) {
+  state_sync_tag(p_sync, STATE_TAG('A', 'C', 'I', 'A'));
+  STATE_SYNC(p_sync, p->acia_status_for_read);
+  STATE_SYNC(p_sync, p->acia_status);
+  STATE_SYNC(p_sync, p->acia_control);
+  STATE_SYNC(p_sync, p->acia_receive);
+  STATE_SYNC(p_sync, p->acia_transmit);
+  STATE_SYNC(p_sync, p->state);
+  STATE_SYNC(p_sync, p->acia_receive_sr);
+  STATE_SYNC(p_sync, p->acia_receive_sr_count);
+  STATE_SYNC(p_sync, p->parity_accumulator);
+  STATE_SYNC(p_sync, p->clock_divide_counter);
+  STATE_SYNC(p_sync, p->is_sr_parity_error);
+  STATE_SYNC(p_sync, p->is_sr_framing_error);
+  STATE_SYNC(p_sync, p->is_sr_overflow);
+  STATE_SYNC(p_sync, p->is_DCD);
 }

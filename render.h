@@ -90,4 +90,7 @@ void render_set_beam_pos(struct render_struct* p_render,
                          int32_t horiz,
                          int32_t vert);
 
+struct state_sync;
+void render_sync_state(struct render_struct* p, struct state_sync* p_sync);
+
 #endif /* BEEBJIT_RENDER_H */

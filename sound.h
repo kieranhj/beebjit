@@ -46,4 +46,7 @@ void sound_set_state(struct sound_struct* p_sound,
 void sound_sn_IC32_updated(struct sound_struct* p_sound, uint8_t value);
 void sound_sn_set_bus_value(struct sound_struct* p_sound, uint8_t value);
 
+struct state_sync;
+void sound_sync_state(struct sound_struct* p, struct state_sync* p_sync);
+
 #endif /* BEEBJIT_SOUND_H */

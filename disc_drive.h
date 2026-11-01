@@ -28,6 +28,11 @@ void disc_drive_power_on_reset(struct disc_drive_struct* p_drive);
 void disc_drive_add_disc(struct disc_drive_struct* p_drive,
                          struct disc_struct* p_disc);
 void disc_drive_cycle_disc(struct disc_drive_struct* p_drive);
+/* Puts p_disc (NULL: nothing) in a drive holding at most one disc, and
+ * returns the disc that was there, which the caller now owns.
+ */
+struct disc_struct* disc_drive_exchange_disc(struct disc_drive_struct* p_drive,
+                                             struct disc_struct* p_disc);
 /* Replaces every disc in the drive with p_disc (NULL: empty drive). */
 void disc_drive_replace_disc(struct disc_drive_struct* p_drive,
                              struct disc_struct* p_disc);
@@ -50,5 +55,8 @@ void disc_drive_select_track(struct disc_drive_struct* p_drive, int32_t track);
 void disc_drive_seek_track(struct disc_drive_struct* p_drive, int32_t delta);
 void disc_drive_write_pulses(struct disc_drive_struct* p_drive,
                              uint32_t pulses);
+
+struct state_sync;
+void disc_drive_sync_state(struct disc_drive_struct* p, struct state_sync* p_sync);
 
 #endif /* BEEBJIT_DISC_DRIVE_H */

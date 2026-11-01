@@ -116,4 +116,7 @@ void keyboard_system_key_pressed(struct keyboard_struct* p_keyboard,
 void keyboard_system_key_released(struct keyboard_struct* p_keyboard,
                                   uint8_t key);
 
+struct state_sync;
+void keyboard_sync_state(struct keyboard_struct* p, struct state_sync* p_sync);
+
 #endif /* BEEBJIT_KEYBOARD_H */

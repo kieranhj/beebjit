@@ -26,4 +26,7 @@ void teletext_render(struct teletext_struct* p_teletext,
                      struct render_character_2MHz* p_out,
                      struct render_character_2MHz* p_next_out);
 
+struct state_sync;
+void teletext_sync_state(struct teletext_struct* p, struct state_sync* p_sync);
+
 #endif /* BEEBJIT_TELETEXT_H */

@@ -1,5 +1,7 @@
 #include "disc_drive.h"
 
+#include "state_sync.h"
+
 #include "bbc_options.h"
 #include "disc.h"
 #include "ibm_disc_format.h"
@@ -495,17 +497,31 @@ disc_drive_write_pulses(struct disc_drive_struct* p_drive, uint32_t pulses) {
   disc_write_pulses(p_disc, is_side_upper, track, head_position, pulses);
 }
 
+struct disc_struct*
+disc_drive_exchange_disc(struct disc_drive_struct* p_drive,
+                         struct disc_struct* p_disc) {
+  /* Swap the media without disturbing the drive: the head stays on the same
+   * track and at the same rotational position, as when a disc is changed in a
+   * real drive. The drive must hold at most one disc.
+   */
+  double fraction = disc_drive_get_position_fraction(p_drive);
+  struct disc_struct* p_old = p_drive->p_discs[0];
+
+  assert(p_drive->discs_added <= 1);
+  p_drive->p_discs[0] = p_disc;
+  p_drive->discs_added = ((p_disc != NULL) ? 1 : 0);
+  p_drive->disc_index = 0;
+  disc_drive_set_position_fraction(p_drive, fraction);
+
+  return p_old;
+}
+
 void
 disc_drive_replace_disc(struct disc_drive_struct* p_drive,
                         struct disc_struct* p_disc) {
-  /* Swap the media without disturbing the drive: the head stays on the same
-   * track and at the same rotational position, as when a disc is changed in a
-   * real drive.
-   */
-  double fraction = disc_drive_get_position_fraction(p_drive);
   uint32_t i;
 
-  for (i = 0; i < k_disc_max_discs_per_drive; ++i) {
+  for (i = 1; i < k_disc_max_discs_per_drive; ++i) {
     struct disc_struct* p_old = p_drive->p_discs[i];
     if (p_old != NULL) {
       disc_flush_writes(p_old);
@@ -513,11 +529,22 @@ disc_drive_replace_disc(struct disc_drive_struct* p_drive,
       p_drive->p_discs[i] = NULL;
     }
   }
-  p_drive->discs_added = 0;
-  p_drive->disc_index = 0;
-  if (p_disc != NULL) {
-    p_drive->p_discs[0] = p_disc;
+  if (p_drive->discs_added > 1) {
     p_drive->discs_added = 1;
   }
-  disc_drive_set_position_fraction(p_drive, fraction);
+  p_disc = disc_drive_exchange_disc(p_drive, p_disc);
+  if (p_disc != NULL) {
+    disc_flush_writes(p_disc);
+    disc_destroy(p_disc);
+  }
+}
+
+void
+disc_drive_sync_state(struct disc_drive_struct* p, struct state_sync* p_sync) {
+  state_sync_tag(p_sync, STATE_TAG('D', 'R', 'I', 'V'));
+  STATE_SYNC(p_sync, p->is_32us_mode);
+  STATE_SYNC(p_sync, p->is_side_upper);
+  STATE_SYNC(p_sync, p->track);
+  STATE_SYNC(p_sync, p->head_position);
+  STATE_SYNC(p_sync, p->pulse_position);
 }

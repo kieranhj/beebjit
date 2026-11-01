@@ -1,5 +1,7 @@
 #include "keyboard.h"
 
+#include "state_sync.h"
+
 #include "bbc_options.h"
 #include "log.h"
 #include "os_lock.h"
@@ -1242,4 +1244,22 @@ keyboard_add_remap(struct keyboard_struct* p_keyboard,
                    uint8_t from,
                    uint8_t to) {
   p_keyboard->remap[from] = to;
+}
+
+void
+keyboard_sync_state(struct keyboard_struct* p, struct state_sync* p_sync) {
+  state_sync_tag(p_sync, STATE_TAG('K', 'E', 'Y', 'B'));
+  STATE_SYNC(p_sync, p->queue_key);
+  STATE_SYNC(p_sync, p->queue_isdown);
+  STATE_SYNC(p_sync, p->queue_pos);
+  STATE_SYNC(p_sync, p->keyboard_links);
+  STATE_SYNC(p_sync, *p->p_physical_keyboard);
+  STATE_SYNC(p_sync, *p->p_virtual_keyboard);
+  {
+    uint8_t is_physical = (p->p_active == p->p_physical_keyboard);
+    STATE_SYNC(p_sync, is_physical);
+    if (state_sync_is_load(p_sync)) {
+      p->p_active = (is_physical ? p->p_physical_keyboard : p->p_virtual_keyboard);
+    }
+  }
 }

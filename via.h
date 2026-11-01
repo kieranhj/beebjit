@@ -165,4 +165,7 @@ void via_set_registers(struct via_struct* p_via,
                        uint8_t t2_oneshot_fired,
                        uint8_t t1_pb7);
 
+struct state_sync;
+void via_sync_state(struct via_struct* p, struct state_sync* p_sync);
+
 #endif /* BEEBJIT_VIA_H */

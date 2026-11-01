@@ -1,5 +1,7 @@
 #include "intel_fdc.h"
 
+#include "state_sync.h"
+
 #include "bbc_options.h"
 #include "disc_drive.h"
 #include "ibm_disc_format.h"
@@ -2141,4 +2143,36 @@ intel_fdc_set_drives(struct intel_fdc_struct* p_fdc,
 
   disc_drive_set_pulses_callback(p_drive_0, intel_fdc_pulses_callback, p_fdc);
   disc_drive_set_pulses_callback(p_drive_1, intel_fdc_pulses_callback, p_fdc);
+}
+
+void
+intel_fdc_sync_state(struct intel_fdc_struct* p, struct state_sync* p_sync) {
+  state_sync_tag(p_sync, STATE_TAG('8', '2', '7', '1'));
+  STATE_SYNC(p_sync, p->parameter_callback);
+  STATE_SYNC(p_sync, p->index_pulse_callback);
+  STATE_SYNC(p_sync, p->timer_state);
+  STATE_SYNC(p_sync, p->call_context);
+  STATE_SYNC(p_sync, p->did_seek_step);
+  STATE_SYNC(p_sync, p->regs);
+  STATE_SYNC(p_sync, p->is_result_ready);
+  STATE_SYNC(p_sync, p->status);
+  STATE_SYNC(p_sync, p->mmio_data);
+  STATE_SYNC(p_sync, p->mmio_clocks);
+  STATE_SYNC(p_sync, p->drive_out);
+  STATE_SYNC(p_sync, p->shift_register);
+  STATE_SYNC(p_sync, p->num_shifts);
+  STATE_SYNC(p_sync, p->state);
+  STATE_SYNC(p_sync, p->state_count);
+  STATE_SYNC(p_sync, p->state_is_index_pulse);
+  STATE_SYNC(p_sync, p->crc);
+  STATE_SYNC(p_sync, p->on_disc_crc);
+  {
+    int32_t drive = -1;
+    if (p->p_current_drive == p->p_drive_0) drive = 0;
+    else if (p->p_current_drive == p->p_drive_1) drive = 1;
+    STATE_SYNC(p_sync, drive);
+    if (state_sync_is_load(p_sync)) {
+      p->p_current_drive = (drive == 0) ? p->p_drive_0 : (drive == 1) ? p->p_drive_1 : NULL;
+    }
+  }
 }

@@ -1,5 +1,7 @@
 #include "via.h"
 
+#include "state_sync.h"
+
 #include "bbc.h"
 #include "cmos.h"
 #include "keyboard.h"
@@ -1572,4 +1574,35 @@ void via_set_registers(struct via_struct* p_via,
   (void) timing_set_firing(p_timing, p_via->t1_timer_id, !t1_oneshot_fired);
   (void) timing_set_firing(p_timing, p_via->t2_timer_id, !t2_oneshot_fired);
   p_via->t1_pb7 = t1_pb7;
+}
+
+void
+via_sync_state(struct via_struct* p, struct state_sync* p_sync) {
+  state_sync_tag(p_sync, STATE_TAG('V', 'I', 'A', '_'));
+  STATE_SYNC(p_sync, p->IRA);
+  STATE_SYNC(p_sync, p->IRB);
+  STATE_SYNC(p_sync, p->ORB);
+  STATE_SYNC(p_sync, p->ORA);
+  STATE_SYNC(p_sync, p->DDRB);
+  STATE_SYNC(p_sync, p->DDRA);
+  STATE_SYNC(p_sync, p->SR);
+  STATE_SYNC(p_sync, p->ACR);
+  STATE_SYNC(p_sync, p->PCR);
+  STATE_SYNC(p_sync, p->IFR);
+  STATE_SYNC(p_sync, p->IER);
+  STATE_SYNC(p_sync, p->peripheral_b);
+  STATE_SYNC(p_sync, p->peripheral_a);
+  STATE_SYNC(p_sync, p->T1L);
+  STATE_SYNC(p_sync, p->T2L);
+  STATE_SYNC(p_sync, p->t1_pb7);
+  STATE_SYNC(p_sync, p->CA1);
+  STATE_SYNC(p_sync, p->CA2);
+  STATE_SYNC(p_sync, p->CB1);
+  STATE_SYNC(p_sync, p->CB2);
+  STATE_SYNC(p_sync, p->bus_value_a);
+  STATE_SYNC(p_sync, p->IRA_cached);
+  STATE_SYNC(p_sync, p->shift_counter);
+  STATE_SYNC(p_sync, p->t1_last_fire_cycles);
+  STATE_SYNC(p_sync, p->t2_last_fire_cycles);
+  STATE_SYNC(p_sync, p->t2_shift_last_fire_cycles);
 }

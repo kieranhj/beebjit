@@ -79,7 +79,27 @@ void bbc_add_disc(struct bbc_struct* p_bbc,
                   int convert_to_hfe,
                   int convert_to_ssd,
                   int convert_to_adl);
+/* Save states. bbc_enable_state_park() makes the machine park at each vsync
+ * on an instruction boundary; save and load only while it is parked.
+ * bbc_state_size() is fixed for a given machine configuration.
+ */
+void bbc_enable_state_park(struct bbc_struct* p_bbc);
+size_t bbc_state_size(struct bbc_struct* p_bbc);
+int bbc_state_save(struct bbc_struct* p_bbc, uint8_t* p_buf, size_t size);
+int bbc_state_load(struct bbc_struct* p_bbc, const uint8_t* p_buf, size_t size);
+
 /* Replaces the disc in a drive while the machine runs; NULL ejects. */
+struct disc_struct;
+struct disc_struct* bbc_open_disc(struct bbc_struct* p_bbc,
+                                  const char* p_filename,
+                                  int is_writeable,
+                                  int is_mutable,
+                                  int is_sides_swapped);
+void bbc_close_disc(struct disc_struct* p_disc);
+/* Puts p_disc in a drive and returns the disc that was there (caller owns). */
+struct disc_struct* bbc_exchange_disc(struct bbc_struct* p_bbc,
+                                      int drive,
+                                      struct disc_struct* p_disc);
 void bbc_replace_disc(struct bbc_struct* p_bbc,
                       int drive,
                       const char* p_filename,
@@ -92,6 +112,8 @@ void bbc_add_raw_disc(struct bbc_struct* p_bbc,
 void bbc_add_tape(struct bbc_struct* p_bbc, const char* p_file_name);
 void bbc_set_stop_cycles(struct bbc_struct* p_bbc, uint64_t cycles);
 void bbc_set_autoboot(struct bbc_struct* p_bbc, int autoboot_flag);
+/* SHIFT is being held for an autoboot. */
+int bbc_is_autobooting(struct bbc_struct* p_bbc);
 void bbc_set_commands(struct bbc_struct* p_bbc, const char* p_commands);
 
 struct cpu_driver* bbc_get_cpu_driver(struct bbc_struct* p_bbc);

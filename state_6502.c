@@ -1,5 +1,7 @@
 #include "state_6502.h"
 
+#include "state_sync.h"
+
 #include "defs_6502.h"
 #include "timing.h"
 #include "util.h"
@@ -227,4 +229,20 @@ state_6502_fire_irq_timer(struct state_6502* p_state_6502) {
   (void) timing_start_timer_with_value(p_state_6502->p_timing,
                                        p_state_6502->timer_id,
                                        0);
+}
+
+void
+state_6502_sync_state(struct state_6502* p_state_6502,
+                      struct state_sync* p_sync) {
+  state_sync_tag(p_sync, STATE_TAG('6', '5', '0', '2'));
+  STATE_SYNC(p_sync, p_state_6502->abi_state.reg_a);
+  STATE_SYNC(p_sync, p_state_6502->abi_state.reg_x);
+  STATE_SYNC(p_sync, p_state_6502->abi_state.reg_y);
+  STATE_SYNC(p_sync, p_state_6502->abi_state.reg_s);
+  STATE_SYNC(p_sync, p_state_6502->abi_state.reg_pc);
+  STATE_SYNC(p_sync, p_state_6502->abi_state.reg_flags);
+  STATE_SYNC(p_sync, p_state_6502->abi_state.irq_fire);
+  STATE_SYNC(p_sync, p_state_6502->state.irq_high);
+  STATE_SYNC(p_sync, p_state_6502->state.ticks_baseline);
+  STATE_SYNC(p_sync, p_state_6502->state.last_interrupt_pc);
 }

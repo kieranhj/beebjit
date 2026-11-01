@@ -1,5 +1,7 @@
 #include "cmos.h"
 
+#include "state_sync.h"
+
 #include "bbc_options.h"
 #include "log.h"
 #include "util.h"
@@ -149,4 +151,15 @@ cmos_update_external_inputs(struct cmos_struct* p_cmos,
 uint8_t*
 cmos_get_ram(struct cmos_struct* p_cmos) {
   return p_cmos->ram;
+}
+
+void
+cmos_sync_state(struct cmos_struct* p, struct state_sync* p_sync) {
+  state_sync_tag(p_sync, STATE_TAG('C', 'M', 'O', 'S'));
+  STATE_SYNC(p_sync, p->enabled);
+  STATE_SYNC(p_sync, p->address_strobe);
+  STATE_SYNC(p_sync, p->data);
+  STATE_SYNC(p_sync, p->read);
+  STATE_SYNC(p_sync, p->addr);
+  STATE_SYNC(p_sync, p->ram);
 }

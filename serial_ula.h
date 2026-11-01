@@ -34,4 +34,7 @@ void serial_ula_receive_tape_bit(struct serial_ula_struct* p_serial_ula,
 
 void serial_ula_tick(struct serial_ula_struct* p_serial_ula);
 
+struct state_sync;
+void serial_ula_sync_state(struct serial_ula_struct* p, struct state_sync* p_sync);
+
 #endif /* BEEBJIT_SERIAL_ULA__H */

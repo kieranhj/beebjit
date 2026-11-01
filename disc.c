@@ -13,6 +13,7 @@
 #include "ibm_disc_format.h"
 #include "log.h"
 #include "util.h"
+#include "util_compress.h"
 
 #include <assert.h>
 #include <math.h>
@@ -73,6 +74,9 @@ struct disc_struct {
    */
   int is_sides_swapped;
 
+  /* Tracks written since the image was loaded, for save states. */
+  uint8_t is_track_written[2][k_ibm_disc_tracks_per_disc];
+
   int is_dirty;
   int32_t dirty_side;
   int32_t dirty_track;
@@ -101,6 +105,7 @@ disc_init_surface(struct disc_struct* p_disc, uint8_t byte) {
 
   p_disc->tracks_used = 0;
   p_disc->is_double_sided = 0;
+  (void) memset(p_disc->is_track_written, 0, sizeof(p_disc->is_track_written));
 }
 
 static void
@@ -513,6 +518,7 @@ disc_write_pulses(struct disc_struct* p_disc,
   p_disc->is_dirty = 1;
   p_disc->dirty_side = is_side_upper;
   p_disc->dirty_track = track;
+  p_disc->is_track_written[!!is_side_upper][track] = 1;
 
   p_pulses[pos] = pulses;
 }
@@ -920,4 +926,137 @@ disc_get_raw_pulses_buffer(struct disc_struct* p_disc,
                            uint32_t track) {
   struct disc_track* p_track = disc_get_track(p_disc, is_side_upper, track);
   return &p_track->pulses2us[0];
+}
+
+/* Save state support: the tracks written since load, each deflated. Layout:
+ * u32 count, then per track: u8 side, u8 track, u16 0, u32 length (in pulse
+ * words), u32 compressed size, compressed bytes. Then the dirty marker.
+ * Returns the bytes used, or 0 if the tracks do not fit in max_size.
+ */
+size_t
+disc_save_written_tracks(struct disc_struct* p_disc,
+                         uint8_t* p_buf,
+                         size_t max_size) {
+  uint32_t side;
+  uint32_t track;
+  uint32_t count = 0;
+  size_t pos = 4;
+  int32_t dirty[3];
+
+  for (side = 0; side < 2; ++side) {
+    for (track = 0; track < k_ibm_disc_tracks_per_disc; ++track) {
+      struct disc_track* p_track;
+      size_t comp_len;
+      uint32_t len32;
+      uint32_t comp32;
+      if (!p_disc->is_track_written[side][track]) {
+        continue;
+      }
+      p_track = disc_get_track(p_disc, side, track);
+      if ((pos + 12) > max_size) {
+        return 0;
+      }
+      comp_len = (max_size - pos - 12);
+      if (util_compress(&comp_len,
+                        (uint8_t*) &p_track->pulses2us[0],
+                        (p_track->length * sizeof(uint32_t)),
+                        (p_buf + pos + 12)) != 0) {
+        return 0;
+      }
+      p_buf[pos] = (uint8_t) side;
+      p_buf[pos + 1] = (uint8_t) track;
+      p_buf[pos + 2] = 0;
+      p_buf[pos + 3] = 0;
+      len32 = p_track->length;
+      comp32 = (uint32_t) comp_len;
+      (void) memcpy((p_buf + pos + 4), &len32, 4);
+      (void) memcpy((p_buf + pos + 8), &comp32, 4);
+      pos += (12 + comp_len);
+      count++;
+    }
+  }
+  if ((pos + sizeof(dirty)) > max_size) {
+    return 0;
+  }
+  dirty[0] = p_disc->is_dirty;
+  dirty[1] = p_disc->dirty_side;
+  dirty[2] = p_disc->dirty_track;
+  (void) memcpy((p_buf + pos), dirty, sizeof(dirty));
+  pos += sizeof(dirty);
+  (void) memcpy(p_buf, &count, 4);
+
+  return pos;
+}
+
+/* Applies saved tracks to a freshly loaded disc. Returns the bytes consumed,
+ * or 0 if the data is malformed.
+ */
+size_t
+disc_load_written_tracks(struct disc_struct* p_disc,
+                         const uint8_t* p_buf,
+                         size_t size) {
+  uint32_t count;
+  uint32_t i;
+  size_t pos = 4;
+  int32_t dirty[3];
+
+  if (size < 4) {
+    return 0;
+  }
+  (void) memcpy(&count, p_buf, 4);
+  for (i = 0; i < count; ++i) {
+    uint32_t side;
+    uint32_t track;
+    uint32_t len32;
+    uint32_t comp32;
+    size_t out_len;
+    struct disc_track* p_track;
+
+    if ((pos + 12) > size) {
+      return 0;
+    }
+    side = p_buf[pos];
+    track = p_buf[pos + 1];
+    (void) memcpy(&len32, (p_buf + pos + 4), 4);
+    (void) memcpy(&comp32, (p_buf + pos + 8), 4);
+    if ((side > 1) || (track >= k_ibm_disc_tracks_per_disc) ||
+        (len32 == 0) || (len32 > k_disc_max_bytes_per_track) ||
+        (comp32 > (size - pos - 12))) {
+      return 0;
+    }
+    p_track = disc_get_track(p_disc, side, track);
+    out_len = (len32 * sizeof(uint32_t));
+    if ((util_uncompress(&out_len,
+                         (uint8_t*) (p_buf + pos + 12),
+                         comp32,
+                         (uint8_t*) &p_track->pulses2us[0]) != 0) ||
+        (out_len != (len32 * sizeof(uint32_t)))) {
+      return 0;
+    }
+    p_track->length = len32;
+    disc_set_track_used(p_disc, side, track);
+    p_disc->is_track_written[side][track] = 1;
+    pos += (12 + comp32);
+  }
+  if ((pos + sizeof(dirty)) > size) {
+    return 0;
+  }
+  (void) memcpy(dirty, (p_buf + pos), sizeof(dirty));
+  pos += sizeof(dirty);
+  p_disc->is_dirty = !!dirty[0];
+  p_disc->dirty_side = dirty[1];
+  p_disc->dirty_track = dirty[2];
+  if (p_disc->is_dirty &&
+      ((dirty[1] < 0) || (dirty[1] > 1) || (dirty[2] < 0) ||
+       (dirty[2] >= k_ibm_disc_tracks_per_disc))) {
+    p_disc->is_dirty = 0;
+    p_disc->dirty_side = -1;
+    p_disc->dirty_track = -1;
+  }
+  if (!p_disc->is_dirty) {
+    p_disc->dirty_side = -1;
+    p_disc->dirty_track = -1;
+  }
+
+  return pos;
 }

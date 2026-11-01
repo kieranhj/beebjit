@@ -1,5 +1,7 @@
 #include "render.h"
 
+#include "state_sync.h"
+
 #include "bbc_options.h"
 #include "teletext.h"
 #include "util.h"
@@ -1177,4 +1179,30 @@ render_set_beam_pos(struct render_struct* p_render,
     p_render->is_crt_grayscale_fakeout = 0;
   }
   render_reset_render_pos(p_render);
+}
+
+void
+render_sync_state(struct render_struct* p, struct state_sync* p_sync) {
+  state_sync_tag(p_sync, STATE_TAG('R', 'E', 'N', 'D'));
+  STATE_SYNC(p_sync, p->logical_to_physical_color);
+  STATE_SYNC(p_sync, p->palette);
+  STATE_SYNC(p_sync, p->is_dispen);
+  STATE_SYNC(p_sync, p->row_address);
+  STATE_SYNC(p_sync, p->is_clock_2MHz);
+  STATE_SYNC(p_sync, p->chars_per_line);
+  STATE_SYNC(p_sync, p->is_teletext);
+  STATE_SYNC(p_sync, p->is_flash);
+  STATE_SYNC(p_sync, p->horiz_beam_pos);
+  STATE_SYNC(p_sync, p->vert_beam_pos);
+  STATE_SYNC(p_sync, p->cursor_segment_index);
+  STATE_SYNC(p_sync, p->cursor_segments);
+  STATE_SYNC(p_sync, p->is_crt_grayscale_fakeout);
+  STATE_SYNC(p_sync, p->dispen_box);
+  STATE_SYNC(p_sync, p->dispen_box_last);
+  if (state_sync_is_load(p_sync)) {
+    /* Rebuild the pixel tables, the render functions and the draw position. */
+    p->render_tables_built = 0;
+    p->needs_render_mode_recalc = 1;
+    render_check_mode_recalc(p);
+  }
 }

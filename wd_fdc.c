@@ -1,5 +1,7 @@
 #include "wd_fdc.h"
 
+#include "state_sync.h"
+
 #include "bbc_options.h"
 #include "disc_drive.h"
 #include "ibm_disc_format.h"
@@ -1594,4 +1596,52 @@ wd_fdc_set_drives(struct wd_fdc_struct* p_fdc,
 void
 wd_fdc_set_is_opus(struct wd_fdc_struct* p_fdc, int is_opus) {
   p_fdc->is_opus = is_opus;
+}
+
+void
+wd_fdc_sync_state(struct wd_fdc_struct* p, struct state_sync* p_sync) {
+  state_sync_tag(p_sync, STATE_TAG('1', '7', '7', '0'));
+  STATE_SYNC(p_sync, p->control_register);
+  STATE_SYNC(p_sync, p->status_register);
+  STATE_SYNC(p_sync, p->track_register);
+  STATE_SYNC(p_sync, p->sector_register);
+  STATE_SYNC(p_sync, p->data_register);
+  STATE_SYNC(p_sync, p->is_intrq);
+  STATE_SYNC(p_sync, p->is_drq);
+  STATE_SYNC(p_sync, p->do_raise_intrq);
+  STATE_SYNC(p_sync, p->is_index_pulse);
+  STATE_SYNC(p_sync, p->is_interrupt_on_index_pulse);
+  STATE_SYNC(p_sync, p->is_write_track_crc_second_byte);
+  STATE_SYNC(p_sync, p->command);
+  STATE_SYNC(p_sync, p->command_type);
+  STATE_SYNC(p_sync, p->is_command_settle);
+  STATE_SYNC(p_sync, p->is_command_write);
+  STATE_SYNC(p_sync, p->is_command_verify);
+  STATE_SYNC(p_sync, p->is_command_multi);
+  STATE_SYNC(p_sync, p->is_command_deleted);
+  STATE_SYNC(p_sync, p->command_step_rate_ms);
+  STATE_SYNC(p_sync, p->state);
+  STATE_SYNC(p_sync, p->timer_state);
+  STATE_SYNC(p_sync, p->state_count);
+  STATE_SYNC(p_sync, p->index_pulse_count);
+  STATE_SYNC(p_sync, p->mark_detector);
+  STATE_SYNC(p_sync, p->data_shifter);
+  STATE_SYNC(p_sync, p->data_shift_count);
+  STATE_SYNC(p_sync, p->deliver_data);
+  STATE_SYNC(p_sync, p->deliver_is_marker);
+  STATE_SYNC(p_sync, p->crc);
+  STATE_SYNC(p_sync, p->on_disc_track);
+  STATE_SYNC(p_sync, p->on_disc_sector);
+  STATE_SYNC(p_sync, p->on_disc_length);
+  STATE_SYNC(p_sync, p->on_disc_crc);
+  STATE_SYNC(p_sync, p->last_mfm_bit);
+  {
+    int32_t drive = -1;
+    if (p->p_current_drive == p->p_drive_0) drive = 0;
+    else if (p->p_current_drive == p->p_drive_1) drive = 1;
+    STATE_SYNC(p_sync, drive);
+    if (state_sync_is_load(p_sync)) {
+      p->p_current_drive = (drive == 0) ? p->p_drive_0 : (drive == 1) ? p->p_drive_1 : NULL;
+    }
+  }
 }
