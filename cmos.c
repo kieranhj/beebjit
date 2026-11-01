@@ -5,6 +5,7 @@
 #include "util.h"
 
 #include <assert.h>
+#include <string.h>
 
 enum {
   k_cmos_port_b_address_strobe = 0x80,
@@ -36,6 +37,11 @@ struct cmos_struct {
   int data;
   int read;
   uint8_t addr;
+
+  /* The 146818's 64 bytes: clock and status registers 0x00-0x0D, then RAM.
+   * The clock is not emulated; its registers read back what was written.
+   */
+  uint8_t ram[k_cmos_size];
 };
 
 struct cmos_struct*
@@ -48,6 +54,7 @@ cmos_create(struct bbc_options* p_options) {
   p_cmos->address_strobe = 0;
   p_cmos->data = 0;
   p_cmos->read = 0;
+  (void) memcpy(p_cmos->ram, s_cmos_defaults, sizeof(p_cmos->ram));
 
   return p_cmos;
 }
@@ -67,7 +74,7 @@ cmos_get_bus_value(struct cmos_struct* p_cmos) {
       p_cmos->data &&
       p_cmos->read) {
     uint8_t addr = p_cmos->addr;
-    val = s_cmos_defaults[addr];
+    val = p_cmos->ram[addr];
 
     if (p_cmos->log) {
       log_do_log(k_log_cmos,
@@ -106,16 +113,25 @@ cmos_update_external_inputs(struct cmos_struct* p_cmos,
   }
   p_cmos->address_strobe = new_address_strobe;
 
-  /* The data pin high -> in write mode does a write. */
-  if (!new_data && !p_cmos->data && !new_address_strobe && !new_read) {
-    /* TODO: don't forget to look a filtering write to <= 0x0B. */
-    log_do_log(k_log_cmos,
-               k_log_unimplemented,
-               "WRITE address %.2X value %.2X",
-               p_cmos->addr,
-               port_a);
+  /* Data strobe high in write mode writes the byte on port A. MOS sets up
+   * port A before raising the strobe; storing on every update while the
+   * strobe is high keeps the last value, as the chip latches it on the
+   * falling edge. Registers 0x0C and 0x0D are read-only.
+   */
+  if (new_data && !new_address_strobe && !new_read) {
+    if (p_cmos->addr != 0x0C && p_cmos->addr != 0x0D) {
+      p_cmos->ram[p_cmos->addr] = port_a;
+      if (p_cmos->log) {
+        log_do_log(k_log_cmos,
+                   k_log_info,
+                   "write address %.2X value %.2X",
+                   p_cmos->addr,
+                   port_a);
+      }
+    }
   }
-  
+
+
   p_cmos->data = new_data;
   p_cmos->read = new_read;
 
@@ -128,4 +144,9 @@ cmos_update_external_inputs(struct cmos_struct* p_cmos,
                p_cmos->data,
                p_cmos->read);
   }
+}
+
+uint8_t*
+cmos_get_ram(struct cmos_struct* p_cmos) {
+  return p_cmos->ram;
 }

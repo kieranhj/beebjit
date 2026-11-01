@@ -2708,6 +2708,141 @@ bbc_memory_write(struct bbc_struct* p_bbc,
   p_cpu_driver->p_funcs->memory_range_invalidate(p_cpu_driver, addr_6502, 1);
 }
 
+/* Bank-addressed memory access for frontends (trainers, POKEs, finders).
+ * Banks: -1 the 64K the 6502 sees now; 0, 1 main RAM 0x0000-0x3FFF and
+ * 0x4000-0x7FFF; 2-17 sideways slots 0-15; 18 shadow RAM (LYNNE, 20K, the
+ * Master's 0x3000-0x7FFF); 19 ANDY (4K, 0x8000-0x8FFF); 20 HAZEL (8K,
+ * 0xC000-0xDFFF). Addresses are offsets within the bank. Each bank is read
+ * wherever its live copy is, whatever is paged in.
+ */
+static uint8_t*
+bbc_get_bank_byte(struct bbc_struct* p_bbc,
+                  int bank,
+                  uint32_t addr,
+                  int* p_is_writeable,
+                  int32_t* p_cpu_addr) {
+  uint8_t* p_raw = p_bbc->p_mem_raw;
+  int is_master = p_bbc->is_master;
+  uint8_t romsel = p_bbc->romsel;
+  uint8_t acccon = p_bbc->acccon;
+
+  *p_is_writeable = 1;
+  *p_cpu_addr = -1;
+
+  if (bank == -1) {
+    if (addr > 0xFFFF) {
+      return NULL;
+    }
+    *p_cpu_addr = addr;
+    if (addr < k_bbc_sideways_offset) {
+      return (p_raw + addr);
+    }
+    if (addr < k_bbc_os_rom_offset) {
+      int is_andy = (is_master && (romsel & k_romsel_andy) &&
+                     (addr < (k_bbc_sideways_offset + k_bbc_andy_size)));
+      uint8_t effective_bank = bbc_get_effective_bank(p_bbc, romsel);
+      *p_is_writeable = (is_andy ||
+                         p_bbc->is_sideways_ram_bank[effective_bank]);
+      return (p_raw + addr);
+    }
+    *p_is_writeable = (is_master && (acccon & k_acccon_hazel) &&
+                       (addr < (k_bbc_os_rom_offset + k_bbc_hazel_size)));
+    return (p_raw + addr);
+  }
+  if ((bank == 0) || (bank == 1)) {
+    addr += (bank * k_bbc_rom_size);
+    if (addr >= k_bbc_ram_size) {
+      return NULL;
+    }
+    if (is_master && (acccon & k_acccon_lynne) &&
+        (addr >= k_bbc_shadow_offset)) {
+      /* Shadow RAM is paged in; main RAM is in LYNNE's store. */
+      return (p_bbc->p_mem_lynne + (addr - k_bbc_shadow_offset));
+    }
+    *p_cpu_addr = addr;
+    return (p_raw + addr);
+  }
+  if ((bank >= 2) && (bank <= 17)) {
+    uint8_t slot = (bank - 2);
+    uint8_t effective_bank = bbc_get_effective_bank(p_bbc, romsel);
+    int is_andy_paged = (is_master && (romsel & k_romsel_andy));
+    if (addr >= k_bbc_rom_size) {
+      return NULL;
+    }
+    *p_is_writeable = p_bbc->is_sideways_ram_bank[slot];
+    if ((slot == effective_bank) &&
+        !(is_andy_paged && (addr < k_bbc_andy_size))) {
+      *p_cpu_addr = (k_bbc_sideways_offset + addr);
+      return (p_raw + k_bbc_sideways_offset + addr);
+    }
+    return (p_bbc->p_mem_sideways + (slot * k_bbc_rom_size) + addr);
+  }
+  if (!is_master) {
+    return NULL;
+  }
+  if (bank == 18) {
+    if (addr >= k_bbc_lynne_size) {
+      return NULL;
+    }
+    if (acccon & k_acccon_lynne) {
+      *p_cpu_addr = (k_bbc_shadow_offset + addr);
+      return (p_raw + k_bbc_shadow_offset + addr);
+    }
+    return (p_bbc->p_mem_lynne + addr);
+  }
+  if (bank == 19) {
+    if (addr >= k_bbc_andy_size) {
+      return NULL;
+    }
+    if (romsel & k_romsel_andy) {
+      *p_cpu_addr = (k_bbc_sideways_offset + addr);
+      return (p_raw + k_bbc_sideways_offset + addr);
+    }
+    return (p_bbc->p_mem_andy + addr);
+  }
+  if (bank == 20) {
+    if (addr >= k_bbc_hazel_size) {
+      return NULL;
+    }
+    if (acccon & k_acccon_hazel) {
+      *p_cpu_addr = (k_bbc_os_rom_offset + addr);
+      return (p_raw + k_bbc_os_rom_offset + addr);
+    }
+    return (p_bbc->p_mem_hazel + addr);
+  }
+  return NULL;
+}
+
+int
+bbc_peek_bank(struct bbc_struct* p_bbc, int bank, uint32_t addr) {
+  int is_writeable;
+  int32_t cpu_addr;
+  uint8_t* p = bbc_get_bank_byte(p_bbc, bank, addr, &is_writeable, &cpu_addr);
+  if (p == NULL) {
+    return -1;
+  }
+  return *p;
+}
+
+int
+bbc_poke_bank(struct bbc_struct* p_bbc, int bank, uint32_t addr, uint8_t val) {
+  int is_writeable;
+  int32_t cpu_addr;
+  uint8_t* p = bbc_get_bank_byte(p_bbc, bank, addr, &is_writeable, &cpu_addr);
+  if ((p == NULL) || !is_writeable) {
+    return 0;
+  }
+  *p = val;
+  if (cpu_addr >= 0) {
+    /* Compiled code may have read this byte. */
+    struct cpu_driver* p_cpu_driver = p_bbc->p_cpu_driver;
+    p_cpu_driver->p_funcs->memory_range_invalidate(p_cpu_driver,
+                                                   (uint16_t) cpu_addr,
+                                                   1);
+  }
+  return 1;
+}
+
 void
 bbc_get_address_details(struct bbc_struct* p_bbc,
                         int* p_out_is_register,
@@ -3175,6 +3310,36 @@ bbc_add_disc(struct bbc_struct* p_bbc,
   }
 
   disc_drive_add_disc(p_drive, p_disc);
+}
+
+void
+bbc_replace_disc(struct bbc_struct* p_bbc,
+                 int drive,
+                 const char* p_filename,
+                 int is_writeable,
+                 int is_mutable,
+                 int is_sides_swapped) {
+  struct disc_drive_struct* p_drive;
+  struct disc_struct* p_disc = NULL;
+
+  assert((drive >= 0) && (drive <= 1));
+  p_drive = (drive == 0) ? p_bbc->p_drive_0 : p_bbc->p_drive_1;
+
+  if (p_filename != NULL) {
+    p_disc = disc_create(p_filename,
+                         is_writeable,
+                         is_mutable,
+                         0,
+                         0,
+                         0,
+                         &p_bbc->options);
+    if (p_disc == NULL) {
+      util_bail("disc_create failed");
+    }
+    disc_set_sides_swapped(p_disc, is_sides_swapped);
+    disc_load(p_disc);
+  }
+  disc_drive_replace_disc(p_drive, p_disc);
 }
 
 void

@@ -50,6 +50,17 @@ disc_drive_get_disc(struct disc_drive_struct* p_drive) {
   return p_drive->p_discs[p_drive->disc_index];
 }
 
+/* The side of the inserted disc under the selected head. */
+static int
+disc_drive_get_disc_side(struct disc_drive_struct* p_drive,
+                         struct disc_struct* p_disc) {
+  int is_side_upper = p_drive->is_side_upper;
+  if ((p_disc != NULL) && disc_is_sides_swapped(p_disc)) {
+    is_side_upper = !is_side_upper;
+  }
+  return is_side_upper;
+}
+
 static double
 disc_get_fraction_for_position(uint32_t track_length,
                                uint32_t head_position,
@@ -91,9 +102,8 @@ disc_drive_get_track_length(struct disc_drive_struct* p_drive) {
   uint32_t track_length = k_ibm_disc_bytes_per_track;
 
   if (p_disc != NULL) {
-    track_length = disc_get_track_length(p_disc,
-                                         p_drive->is_side_upper,
-                                         p_drive->track);
+    track_length = disc_get_track_length(
+        p_disc, disc_drive_get_disc_side(p_drive, p_disc), p_drive->track);
   }
   return track_length;
 }
@@ -120,7 +130,7 @@ disc_drive_timer_callback(void* p) {
   struct disc_drive_struct* p_drive = (struct disc_drive_struct*) p;
   struct disc_struct* p_disc = disc_drive_get_disc(p_drive);
   uint32_t track = p_drive->track;
-  int is_side_upper = p_drive->is_side_upper;
+  int is_side_upper = disc_drive_get_disc_side(p_drive, p_disc);
   uint32_t head_position = p_drive->head_position;
   uint32_t pulse_position = p_drive->pulse_position;
 
@@ -237,7 +247,9 @@ disc_drive_destroy(struct disc_drive_struct* p_drive) {
   for (i = 0; i < k_disc_max_discs_per_drive; ++i) {
     struct disc_struct* p_disc = p_drive->p_discs[i];
     if (p_disc != NULL) {
-      util_free(p_disc);
+      /* disc_destroy() also closes the image file; util_free() leaked it. */
+      disc_flush_writes(p_disc);
+      disc_destroy(p_disc);
     }
   }
 
@@ -455,7 +467,7 @@ disc_drive_seek_track(struct disc_drive_struct* p_drive, int32_t delta) {
 void
 disc_drive_write_pulses(struct disc_drive_struct* p_drive, uint32_t pulses) {
   struct disc_struct* p_disc = disc_drive_get_disc(p_drive);
-  int is_side_upper = p_drive->is_side_upper;
+  int is_side_upper = disc_drive_get_disc_side(p_drive, p_disc);
   uint32_t track = p_drive->track;
   uint32_t head_position = p_drive->head_position;
 
@@ -481,4 +493,31 @@ disc_drive_write_pulses(struct disc_drive_struct* p_drive, uint32_t pulses) {
     }
   }
   disc_write_pulses(p_disc, is_side_upper, track, head_position, pulses);
+}
+
+void
+disc_drive_replace_disc(struct disc_drive_struct* p_drive,
+                        struct disc_struct* p_disc) {
+  /* Swap the media without disturbing the drive: the head stays on the same
+   * track and at the same rotational position, as when a disc is changed in a
+   * real drive.
+   */
+  double fraction = disc_drive_get_position_fraction(p_drive);
+  uint32_t i;
+
+  for (i = 0; i < k_disc_max_discs_per_drive; ++i) {
+    struct disc_struct* p_old = p_drive->p_discs[i];
+    if (p_old != NULL) {
+      disc_flush_writes(p_old);
+      disc_destroy(p_old);
+      p_drive->p_discs[i] = NULL;
+    }
+  }
+  p_drive->discs_added = 0;
+  p_drive->disc_index = 0;
+  if (p_disc != NULL) {
+    p_drive->p_discs[0] = p_disc;
+    p_drive->discs_added = 1;
+  }
+  disc_drive_set_position_fraction(p_drive, fraction);
 }

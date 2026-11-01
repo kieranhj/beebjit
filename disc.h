@@ -30,6 +30,8 @@ void disc_load(struct disc_struct* p_disc);
 void disc_destroy(struct disc_struct* p_disc);
 
 int disc_is_double_sided(struct disc_struct* p_disc);
+void disc_set_sides_swapped(struct disc_struct* p_disc, int is_swapped);
+int disc_is_sides_swapped(struct disc_struct* p_disc);
 uint32_t disc_get_num_tracks_used(struct disc_struct* p_disc);
 int disc_is_skip_upper_side(struct disc_struct* p_disc);
 int disc_is_skip_odd_tracks(struct disc_struct* p_disc);

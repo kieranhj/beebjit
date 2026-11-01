@@ -45,6 +45,8 @@ struct state_6502 {
   struct {
     uint32_t irq_high;
     uint64_t ticks_baseline;
+    /* Where the most recent IRQ or NMI interrupted, for frontends. */
+    uint16_t last_interrupt_pc;
   } state;
 };
 

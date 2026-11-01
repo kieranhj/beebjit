@@ -68,6 +68,11 @@ struct disc_struct {
   int is_mutable;
   int had_first_load;
 
+  /* Set when a double-sided image is inserted "flipped": the drive's lower
+   * head reads the image's upper side and vice versa.
+   */
+  int is_sides_swapped;
+
   int is_dirty;
   int32_t dirty_side;
   int32_t dirty_track;
@@ -452,6 +457,16 @@ disc_set_track_used(struct disc_struct* p_disc,
   if ((track + 1) > p_disc->tracks_used) {
     p_disc->tracks_used = (track + 1);
   }
+}
+
+void
+disc_set_sides_swapped(struct disc_struct* p_disc, int is_swapped) {
+  p_disc->is_sides_swapped = !!is_swapped;
+}
+
+int
+disc_is_sides_swapped(struct disc_struct* p_disc) {
+  return p_disc->is_sides_swapped;
 }
 
 int

@@ -1205,6 +1205,8 @@ interp_enter_with_countdown(struct interp_struct* p_interp, int64_t countdown) {
         /* It's a BRK, not an IRQ. */
         temp_u8 = (1 << k_flag_brk);
         pc += 2;
+      } else {
+        p_state_6502->state.last_interrupt_pc = pc;
       }
       INTERP_TIMING_ADVANCE(3);
       v = interp_get_flags(zf, nf, cf, of, df, intf);

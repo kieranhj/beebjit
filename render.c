@@ -82,6 +82,12 @@ struct render_struct {
   int is_double_size;
   int do_deinterlace_teletext;
   int do_deinterlace_bitmap;
+
+  /* Bounding box of beam positions with display enabled: being gathered for
+   * the current frame, and latched at the last flyback.
+   */
+  int32_t dispen_box[4];
+  int32_t dispen_box_last[4];
 };
 
 struct render_struct*
@@ -173,6 +179,10 @@ render_create(struct teletext_struct* p_teletext,
   p_render->needs_render_mode_recalc = 1;
 
   p_render->cursor_segment_index = -1;
+  p_render->dispen_box[0] = INT32_MAX;
+  p_render->dispen_box[1] = INT32_MAX;
+  p_render->dispen_box[2] = INT32_MIN;
+  p_render->dispen_box[3] = INT32_MIN;
 
   p_render->render_tables_built = 0;
 
@@ -935,8 +945,40 @@ render_prepare(struct render_struct* p_render) {
   }
 }
 
+static void
+render_reset_dispen_box(struct render_struct* p_render) {
+  p_render->dispen_box[0] = INT32_MAX;
+  p_render->dispen_box[1] = INT32_MAX;
+  p_render->dispen_box[2] = INT32_MIN;
+  p_render->dispen_box[3] = INT32_MIN;
+}
+
+void
+render_get_dispen_box(struct render_struct* p_render, int32_t* p_box) {
+  /* In buffer pixels: left, top, right, bottom (exclusive). */
+  int32_t* p_last = p_render->dispen_box_last;
+  if (p_last[2] <= p_last[0]) {
+    p_box[0] = p_box[1] = p_box[2] = p_box[3] = 0;
+    return;
+  }
+  p_box[0] = (p_last[0] - p_render->horiz_beam_window_start_pos);
+  p_box[1] = (p_last[1] - p_render->vert_beam_window_start_pos);
+  p_box[2] = (p_last[2] - p_render->horiz_beam_window_start_pos);
+  p_box[3] = (p_last[3] - p_render->vert_beam_window_start_pos);
+}
+
 void
 render_render(struct render_struct* p_render, uint8_t data, int is_odd_tick) {
+  if (p_render->is_dispen) {
+    int32_t x = p_render->horiz_beam_pos;
+    int32_t y = (p_render->vert_beam_pos & ~1);
+    int32_t* p_box = p_render->dispen_box;
+    if (x < p_box[0]) p_box[0] = x;
+    if (y < p_box[1]) p_box[1] = y;
+    if ((x + 8) > p_box[2]) p_box[2] = (x + 8);
+    if ((y + 2) > p_box[3]) p_box[3] = (y + 2);
+  }
+
   p_render->horiz_beam_pos += 8;
 
   if (p_render->p_render_pos <= p_render->p_render_pos_row_max) {
@@ -1083,6 +1125,11 @@ render_vsync(struct render_struct* p_render) {
   if (p_render->vert_beam_pos < 64) {
     return;
   }
+
+  (void) memcpy(p_render->dispen_box_last,
+                p_render->dispen_box,
+                sizeof(p_render->dispen_box_last));
+  render_reset_dispen_box(p_render);
 
   if (p_render->p_flyback_callback) {
     if (p_render->is_crt_grayscale_fakeout) {

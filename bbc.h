@@ -79,6 +79,13 @@ void bbc_add_disc(struct bbc_struct* p_bbc,
                   int convert_to_hfe,
                   int convert_to_ssd,
                   int convert_to_adl);
+/* Replaces the disc in a drive while the machine runs; NULL ejects. */
+void bbc_replace_disc(struct bbc_struct* p_bbc,
+                      int drive,
+                      const char* p_filename,
+                      int is_writeable,
+                      int is_mutable,
+                      int is_sides_swapped);
 void bbc_add_raw_disc(struct bbc_struct* p_bbc,
                       const char* p_file_name,
                       const char* p_spec);
@@ -123,6 +130,12 @@ void bbc_set_memory_block(struct bbc_struct* p_bbc,
 void bbc_memory_write(struct bbc_struct* p_bbc,
                       uint16_t addr_6502,
                       uint8_t val);
+/* Memory by bank for frontends; see the bank numbering in bbc.c.
+ * peek returns -1 for a bank or address that does not exist; poke returns 1
+ * if the byte was written, 0 for ROM or a bad bank.
+ */
+int bbc_peek_bank(struct bbc_struct* p_bbc, int bank, uint32_t addr);
+int bbc_poke_bank(struct bbc_struct* p_bbc, int bank, uint32_t addr, uint8_t val);
 void bbc_get_address_details(struct bbc_struct* p_bbc,
                              int* p_out_is_register,
                              int* p_out_is_rom,

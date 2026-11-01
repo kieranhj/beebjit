@@ -72,6 +72,10 @@ void render_set_RA(struct render_struct* p_render, uint32_t row_address);
  * all pending pixel table rebuilds are taken care of.
  */
 void render_prepare(struct render_struct* p_render);
+/* Area the CRTC displayed in the last complete frame, in buffer pixels:
+ * left, top, right, bottom (exclusive). All zero if nothing was displayed.
+ */
+void render_get_dispen_box(struct render_struct* p_render, int32_t* p_box);
 void render_render(struct render_struct* p_render,
                    uint8_t data,
                    int is_odd_tick);

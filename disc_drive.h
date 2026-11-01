@@ -28,6 +28,9 @@ void disc_drive_power_on_reset(struct disc_drive_struct* p_drive);
 void disc_drive_add_disc(struct disc_drive_struct* p_drive,
                          struct disc_struct* p_disc);
 void disc_drive_cycle_disc(struct disc_drive_struct* p_drive);
+/* Replaces every disc in the drive with p_disc (NULL: empty drive). */
+void disc_drive_replace_disc(struct disc_drive_struct* p_drive,
+                             struct disc_struct* p_disc);
 
 struct disc_struct* disc_drive_get_disc(struct disc_drive_struct* p_drive);
 int disc_drive_is_spinning(struct disc_drive_struct* p_drive);
